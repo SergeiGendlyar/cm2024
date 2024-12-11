@@ -128,25 +128,58 @@ def plot_curve(points, p, a):
     plt.grid()
     plt.show()
 
-# Генерация эллиптической кривой
+
+# Добавление функции разложения в кольце Z[i]
+def decompose_in_zi(p):
+    for d in range(1, isqrt(p) + 1):
+        e_squared = p - d ** 2
+        if e_squared >= 0:
+            e = isqrt(e_squared)
+            if e ** 2 == e_squared:
+                return (d, e)
+    return None
+
+
+# Изменение функции генерации эллиптической кривой
 def generate_elliptic_curve(n):
     primes = generate_primes(n)
     if not primes:
         print("Не найдено подходящих простых чисел для заданной длины n.")
         return None
 
-    # перемешиваем массив простых
-    random.shuffle(primes)
+    random.shuffle(primes)  # Перемешиваем массив простых чисел
 
     for p in primes:
         print(f"\nТекущая характеристика поля: p = {p}")
+
+        # Разложение числа p в кольце Z[i]
+        decomposition = decompose_in_zi(p)
+        if decomposition:
+            d, e = decomposition
+            print(f"Разложение числа p в Z[i]: p = ({d} + {e}i)({d} - {e}i), где d^2 + e^2 = {p}")
+        else:
+            print(f"Не удалось разложить p = {p} в Z[i]. Пропускаем это число.")
+            continue
+
         for attempt in range(10):  # Ограничиваем количество попыток для подбора a
             a = random.randint(1, p - 1)
             print(f"Подобран коэффициент a = {a}")
 
+            # Проверка условия следствия 2 (например, -a — квадратичный вычет)
+            if pow(-a, (p - 1) // 2, p) == 1:
+                print(f"-a является квадратичным вычетом в GF({p}).")
+                h = 2 * d
+            else:
+                print(f"-a не является квадратичным вычетом в GF({p}).")
+                h = 2 * e
+
+            # Расчёт количества точек на эллиптической кривой
+            num_points = p + 1 + h
+            print(f"Количество точек на кривой E(GF(p)): {num_points}")
+
             P0 = None
             for x in range(p):
-                y_squared = (x**3 + a * x) % p
+                y_squared = (x ** 3 + a * x) % p
                 if is_quadratic_residue(y_squared, p):
                     y = sqrt_mod(y_squared, p)
                     P0 = (x, y)
@@ -158,17 +191,12 @@ def generate_elliptic_curve(n):
                 continue
 
             points = count_points(a, p)
-            num_points = len(points)
-            print(f"Порядок группы (включая бесконечность): {num_points}")
+            print(f"Порядок группы (включая бесконечность): {len(points)}")
 
             # Проверяем порядок подгруппы, порождённой P0
-            try:
-                q = find_order(P0, a, p)
-                if q is None:
-                    print(f"Не удалось найти порядок подгруппы для P0 = {P0}. Пробуем другое значение.")
-                    continue
-            except ValueError as e:
-                print(f"Ошибка при вычислении порядка: {e}")
+            q = find_order(P0, a, p)
+            if q is None:
+                print(f"Не удалось найти порядок подгруппы для P0 = {P0}. Пробуем другое значение.")
                 continue
 
             if not is_group_cyclic(P0, a, p, q):
@@ -181,13 +209,15 @@ def generate_elliptic_curve(n):
                 "a": a,
                 "P0": P0,
                 "points": points,
-                "order": num_points,
+                "order": len(points),
                 "subgroup_order": q
             }
 
     print("Не удалось сгенерировать эллиптическую кривую для всех возможных простых чисел.")
     return None
 
+
+# Обновление основной функции
 def main():
     print("Алгоритм генерации эллиптической кривой")
     n = int(input("Введите длину простого числа (в битах): "))
@@ -199,15 +229,11 @@ def main():
         print(f"Коэффициент кривой (a): {curve['a']}")
         print(f"Базовая точка P0: {curve['P0']}")
         print(f"Порядок группы (включая бесконечность): {curve['order']}")
-        print(f"Порядок подгруппы (q): {curve.get('subgroup_order', 'не найден')}")
-        if curve.get("is_cyclic"):
-            print("Группа, порождённая P0, является циклической.")
-        else:
-            print("Группа, порождённая P0, не является циклической.")
-        print("График эллиптической кривой:")
+        print(f"Порядок подгруппы (q): {curve['subgroup_order']}")
         plot_curve(curve['points'], curve['p'], curve['a'])
     else:
         print("Не удалось сгенерировать эллиптическую кривую для заданной длины n.")
+
 
 if __name__ == "__main__":
     main()

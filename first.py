@@ -1,5 +1,6 @@
 import random
 from math import gcd, isqrt
+import matplotlib.pyplot as plt
 
 # Проверка числа на простоту
 def is_prime(n):
@@ -10,12 +11,13 @@ def is_prime(n):
             return False
     return True
 
-# Генерация случайного простого числа длиной n бит
-def generate_prime(n):
-    while True:
-        p = random.randint(2**(n-1), 2**n - 1)
+# Генерация всех простых чисел длиной n бит
+def generate_primes(n):
+    primes = []
+    for p in range(2**(n-1), 2**n):
         if is_prime(p) and p % 4 == 1:  # Условие p ≡ 1 (mod 4)
-            return p
+            primes.append(p)
+    return primes
 
 # Проверка, является ли число квадратичным вычетом по модулю p
 def is_quadratic_residue(a, p):
@@ -30,41 +32,50 @@ def sqrt_mod(a, p):
 
 # Умножение точки на эллиптической кривой
 def point_multiplication(P, k, a, p):
-    Q = None
-    R = P
-    while k:
-        if k & 1:
-            Q = point_addition(Q, R, a, p)
-        R = point_addition(R, R, a, p)
-        k >>= 1
-    return Q
+    R = None
+    Q = P
+
+    while k > 0:
+        if k % 2 == 1:  # Если текущий бит равен 1
+            R = point_addition(R, Q, a, p)
+            if R is None:
+                return None
+        Q = point_addition(Q, Q, a, p)
+        if Q is None:
+            return None
+        k //= 2
+    return R
+
 
 # Сложение двух точек на эллиптической кривой
 def point_addition(P, Q, a, p):
-    if P is None:
+    if P is None:  # Точка на бесконечности
         return Q
-    if Q is None:
+    if Q is None:  # Точка на бесконечности
         return P
 
     x1, y1 = P
     x2, y2 = Q
 
-    if x1 == x2 and y1 != y2:
-        return None
+    if x1 == x2 and y1 == -y2 % p:
+        return None  # Сложение противоположных точек приводит к точке на бесконечности
 
-    if P == Q:
+    if P == Q:  # Удвоение точки
+        if y1 % p == 0:  # Нет обратного элемента для 2y1
+            return None
         s = (3 * x1**2 + a) * pow(2 * y1, -1, p) % p
-    else:
+    else:  # Сложение двух разных точек
+        if (x2 - x1) % p == 0:  # Нет обратного элемента для x2 - x1
+            return None
         s = (y2 - y1) * pow(x2 - x1, -1, p) % p
 
     x3 = (s**2 - x1 - x2) % p
     y3 = (s * (x1 - x3) - y1) % p
-
     return x3, y3
 
 # Подсчёт количества точек на эллиптической кривой
 def count_points(a, p):
-    points = [None]  # Начинаем с точки на бесконечности
+    points = [None]  # Точка на бесконечности
     for x in range(p):
         y_squared = (x**3 + a * x) % p
         if is_quadratic_residue(y_squared, p):
@@ -74,84 +85,129 @@ def count_points(a, p):
                 points.append((x, p - y))
     return points
 
+# Нахождение порядка подгруппы, порождённой P0
+def find_order(P0, a, p):
+    if P0 is None:
+        return None
+    Q = P0
+    for i in range(1, p + 1):  # Порядок не может превышать p + 1
+        Q = point_multiplication(P0, i, a, p)
+        if Q is None:  # Достигли точки на бесконечности
+            return i
+    return None  # Если не удалось найти порядок
+
 # Проверка на цикличность группы
 def is_group_cyclic(P, a, p, order):
     seen_points = set()
     Q = P
-    for _ in range(order):
+    for index in range(order):
         if Q in seen_points:
             return False
         seen_points.add(Q)
         Q = point_addition(Q, P, a, p)
     return len(seen_points) == order
 
+
+# Построение графика эллиптической кривой
+def plot_curve(points, p, a):
+    # Исключаем точки на бесконечности (None) из списка для графика
+    valid_points = [(x, y) for pt in points if pt is not None for x, y in [pt]]
+
+    if not valid_points:
+        print("Нет точек для отображения на графике.")
+        return
+
+    x_vals, y_vals = zip(*valid_points)
+
+    plt.figure(figsize=(8, 6))
+    plt.scatter(x_vals, y_vals, c='blue', label='Точки на кривой')
+    plt.title(f"Эллиптическая кривая: y^2 = x^3 + {a}x (mod {p})")
+    plt.xlabel("x")
+    plt.ylabel("y")
+    plt.legend()
+    plt.grid()
+    plt.show()
+
 # Генерация эллиптической кривой
 def generate_elliptic_curve(n):
-    while True:
-        print("\nГенерация случайного простого числа...")
-        p = generate_prime(n)
-        print(f"Сгенерировано простое число p = {p}, проверка p ≡ 1 (mod 4): успешно!")
+    primes = generate_primes(n)
+    if not primes:
+        print("Не найдено подходящих простых чисел для заданной длины n.")
+        return None
 
-        print("Подбор коэффициента a...")
-        a = random.randint(1, p - 1)
-        print(f"Выбран коэффициент a = {a}")
+    # перемешиваем массив простых
+    random.shuffle(primes)
 
-        print("Поиск базовой точки P0 на кривой...")
-        P0 = None
-        for x in range(p):
-            y_squared = (x**3 + a * x) % p
-            if is_quadratic_residue(y_squared, p):
-                y = sqrt_mod(y_squared, p)
-                P0 = (x, y)
-                print(f"Найдена базовая точка P0: {P0}")
-                break
+    for p in primes:
+        print(f"\nТекущая характеристика поля: p = {p}")
+        for attempt in range(10):  # Ограничиваем количество попыток для подбора a
+            a = random.randint(1, p - 1)
+            print(f"Подобран коэффициент a = {a}")
 
-        if P0 is None:
-            print("Не удалось найти точку P0. Перегенерация параметров...\n")
-            continue  # Если точка не найдена, начать заново
+            P0 = None
+            for x in range(p):
+                y_squared = (x**3 + a * x) % p
+                if is_quadratic_residue(y_squared, p):
+                    y = sqrt_mod(y_squared, p)
+                    P0 = (x, y)
+                    print(f"Найдена базовая точка P0: {P0}")
+                    break
 
-        print("Подсчёт точек на кривой...")
-        points = count_points(a, p)
-        num_points = len(points)
-        print(f"Общее количество точек (включая бесконечность): {num_points}")
+            if P0 is None:
+                print(f"Не удалось найти базовую точку для p = {p}, a = {a}. Пробуем другое значение a.")
+                continue
 
-        print("Проверка теоремы Хассе...")
-        lower_bound = p + 1 - 2 * isqrt(p)
-        upper_bound = p + 1 + 2 * isqrt(p)
-        if not (lower_bound <= num_points <= upper_bound):
-            print(f"Порядок группы {num_points} не соответствует теореме Хассе. Перегенерация параметров...\n")
-            continue
+            points = count_points(a, p)
+            num_points = len(points)
+            print(f"Порядок группы (включая бесконечность): {num_points}")
 
-        print(f"Теорема Хассе выполнена: {lower_bound} <= {num_points} <= {upper_bound}")
+            # Проверяем порядок подгруппы, порождённой P0
+            try:
+                q = find_order(P0, a, p)
+                if q is None:
+                    print(f"Не удалось найти порядок подгруппы для P0 = {P0}. Пробуем другое значение.")
+                    continue
+            except ValueError as e:
+                print(f"Ошибка при вычислении порядка: {e}")
+                continue
 
-        print("Проверка цикличности группы...")
-        if not is_group_cyclic(P0, a, p, num_points):
-            print("Группа не является циклической. Перегенерация параметров...\n")
-            continue
+            if not is_group_cyclic(P0, a, p, q):
+                print(f"Группа, порождённая P0, не является циклической для p = {p}, a = {a}.")
+                continue
 
-        print("Группа является циклической! Эллиптическая кривая успешно сгенерирована.")
-        return {
-            "p": p,
-            "a": a,
-            "P0": P0,
-            "points": points,
-            "order": num_points
-        }
+            print(f"Сгенерирована эллиптическая кривая при p = {p}:")
+            return {
+                "p": p,
+                "a": a,
+                "P0": P0,
+                "points": points,
+                "order": num_points,
+                "subgroup_order": q
+            }
 
-# Ввод из консоли
+    print("Не удалось сгенерировать эллиптическую кривую для всех возможных простых чисел.")
+    return None
+
 def main():
     print("Алгоритм генерации эллиптической кривой")
     n = int(input("Введите длину простого числа (в битах): "))
-    try:
-        curve = generate_elliptic_curve(n)
-        print("\nИтог:")
+    curve = generate_elliptic_curve(n)
+
+    if curve:
+        print("\nИтоговые параметры эллиптической кривой:")
         print(f"Характеристика поля (p): {curve['p']}")
         print(f"Коэффициент кривой (a): {curve['a']}")
         print(f"Базовая точка P0: {curve['P0']}")
-        print(f"Порядок группы: {curve['order']}")
-        print(f"Точки группы (первые 10): {curve['points'][:10]}...")
-    except ValueError as e:
-        print(f"Ошибка: {e}")
+        print(f"Порядок группы (включая бесконечность): {curve['order']}")
+        print(f"Порядок подгруппы (q): {curve.get('subgroup_order', 'не найден')}")
+        if curve.get("is_cyclic"):
+            print("Группа, порождённая P0, является циклической.")
+        else:
+            print("Группа, порождённая P0, не является циклической.")
+        print("График эллиптической кривой:")
+        plot_curve(curve['points'], curve['p'], curve['a'])
+    else:
+        print("Не удалось сгенерировать эллиптическую кривую для заданной длины n.")
 
 if __name__ == "__main__":
     main()
